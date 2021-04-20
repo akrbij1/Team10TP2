@@ -290,6 +290,17 @@ test$reordered[is.na(test$reordered)] <- 0
 ```
 
 ## Random Forest
+Random forests or random decision forests are an ensemble learning method for classification, regression and other tasks that operates by constructing a multitude of decision trees at training time and outputting the class that is the mode of the classes or mean/average prediction of the individual treesCan be used in binary classification problems where the model either shows a 0 or 1.
+
+Pros:
+ * Random Forests can be used for both classification and regression tasks.
+ * Random Forests work well with both categorical and numerical data. No scaling or transformation of variables is usually necessary.
+ * Random Forests are not influenced by outliers to a fair degree. It does this by binning the variables.
+ * Random Forests can handle linear and non-linear relationships well.
+Cons:
+ * Random Forests are not easily interpretable. They provide feature importance but it does not provide complete visibility into the coefficients as linear regression.
+ * Random Forests can be computationally intensive for large datasets.
+ * Random forest is like a black box algorithm, you have very little control over what the model does.
 
 ### Model Setup
 
@@ -369,7 +380,19 @@ The model was able to perform with an error rate of under 10% and receive an F1 
 
 
 ## XGBoost
+Used for any classification problem. Specially useful if you have too many features and too large datasets, outliers are present, there are many missing values and you don’t want to do much feature engineering
 
+Pros: 
+ * Less feature engineering required (No need for scaling, normalizing data, can also handle missing values well)
+ * Feature importance can be found out(it output importance of each feature, can be used for feature selection)
+ * Outliers have minimal impact.
+ * High f1 performance will show the effectiveness of your models ability to predict
+
+Cons: 
+ * Harder to tune as there are too many hyperparameters.
+ * Overfitting possible if parameters not tuned properly.
+ * Difficult interpretation , visualization tough
+ 
 ### Model Setup
 
 The following parameters were used for the xgboosting model. The selected parameters for this model was set up to make the model more conservative. Only 10% of the training set was used for the boosting model. An xgboosting matrix was created without columns that are unusable in the model like user and product ID. Then this matrix is used in an xgboosting model, which trains for 90 rounds. For this model we tried 4 different settings but the model didn't improve any further. We concluded that the original setting we made were the most efficient to train our model.
