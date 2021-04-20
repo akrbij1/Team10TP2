@@ -360,22 +360,23 @@ The model was able to perform with an error rate of 10% and recieve an F1 score 
 
 ### The XGBoost Model
 
-The following parameters were used for the xgboosting model. Only 10% of the training set was used for the boosting model. An xgboosting matrix was created without columns that are unusable in the model like user and product ID. Then this matrix is used in an xgboosting model, which trains for 90 rounds. 
+The following parameters were used for the xgboosting model. The selected parameters for this model was set up to make the model more conservative. Only 10% of the training set was used for the boosting model. An xgboosting matrix was created without columns that are unusable in the model like user and product ID. Then this matrix is used in an xgboosting model, which trains for 90 rounds. For this model we tried 4 different settings but the model didn't improve any further. We concluded that the original setting we made were the most efficient to train our model.
 
 ```{r}
 set.seed(10)
 params <- list(
-  "objective"           = "reg:logistic",
-  "eval_metric"         = "logloss",
-  "eta"                 = 0.1,
-  "max_depth"           = 5,
-  "min_child_weight"    = 10,
-  "gamma"               = 0.70,
-  "subsample"           = 0.77,
-  "colsample_bytree"    = 0.95,
-  "alpha"               = 10e-05,
-  "lambda"              = 10
+  "objective"           = "reg:logistic",  # learning objective
+  "eval_metric"         = "logloss",   # to account for negative log-likelihood
+  "eta"                 = 0.1,         # used to prevent overfitting, and after each boosting step we get new weights and features.
+  "max_depth"           = 5,           # involves the model complexity, used to decrease overfitting
+  "min_child_weight"    = 10,          # the minimum sum of instances weight needed.
+  "gamma"               = 0.70,        # is the minimum loss reduction required to make a further partition on a leaf node of the tree 
+  "subsample"           = 0.77,        # is a ration of the training instances, and in this case would take a random sample of 77% of the data
+  "colsample_bytree"    = 0.95,        # is the subsample ratio of columns when constructing each tree
+  "alpha"               = 10e-05,      # L1 term on weight of the model
+  "lambda"              = 10           # L2 regularization term on weights
 )
+
 
 subtrain <- train %>% sample_frac(0.1)
 
