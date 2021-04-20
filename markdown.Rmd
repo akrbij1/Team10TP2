@@ -18,11 +18,35 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## The Problem
 
-ADD TEXT
+Instacart, a grocery order and delivery app, wants to use its 3 million order records to predict which of the products that have been previously bought will be included in the costumers next order. Doing so would give instacart the capacity to adjust their recommendation system and become more efficient in their inventory management. 
+
 
 ## Existing Model Critiques
 
-ADD TEXT
+### Main Model- XGBoost.
+
+Pros:
+
+* Strong predictive power. 
+* Relevant feature creation such as reorder probability and reorder ratios. 
+* Uses Kaggles best performing algorithm. 
+* Easy interpretability.
+
+Cons:
+
+* Lack of documentation through data wrangling. 
+* Had to reduce the size of training set to 10% due to lack of computational power.
+
+
+### Model Comparison
+
+When exploring the other solutions posted in Kaggle, we found that the majority of the submissions had a very similar implementation of XGBoost. The main differences between the submissions relied in the feature creation based on the data provided. Data was given on multiple CSV files which allowed for a lot of freedom in the feature creation. This differences in features did not permit us to try many different models since it would require extensive data preparation.
+
+There was one major division between the models. Some tried to create models with the capacity to determine if a product was going to be reordered or not. The rest of the submissions are non-supervised models such as K-Means, which are intended to identify market segments that could later be used for predictive purposes. We believed that a predicion of product reorders had a higher business value since it has a very practical implementation on daily operations. 
+
+
+One of the reasons why XGBoost is so widely used for this problem is because it is the only algorithm that has the capacity to run with such a big data set. Looking at the top submissions we can quickly see that all of the top performing models are run with XGBoost. 
+
 
 
 ## Data Preparation and Cleansing
