@@ -304,7 +304,7 @@ Cons:
 
 ### Model Setup
 
-To compare a standard Random Forest model, only 2% of the training set was used for the model as our computer machines were unable to handle the entirety of the data. 1% is still 135,000 data, so it still could build a model with it.
+To compare a standard Random Forest model, only 2% of the training set was used for the model as our computer machines were unable to handle the entirety of the data. 2% is still 135,000 data, so it still could build a model with it.
 
 ```{r}
 set.seed(10)
@@ -486,8 +486,6 @@ Even only using 10% of the training set, and therefore 8% of the total dataset, 
 
 
 ## Reproducibility
-
-[Kaggle Source](https://www.kaggle.com/c/instacart-market-basket-analysis)
 
 The data source includes all of 6 csvs of the necessary data sources and code files. The code outlines all the feature creation is provided in each step to reduce error. 
 
