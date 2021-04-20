@@ -54,6 +54,7 @@ One of the reasons why XGBoost is so widely used for this problem is because it 
 ### Loading the Data
 
 ```{r, results='hide', message=FALSE, warning=FALSE}
+start_time <- Sys.time()
 installIfAbsentAndLoad <- function(neededVector) {
   for(thispackage in neededVector) {
     if( ! require(thispackage, character.only = T) )
@@ -404,6 +405,7 @@ The model was able to perform with an error rate of under 10% and receive an F1 
 
 
 ## XGBoost
+
 Used for any classification problem. Specially useful if you have too many features and too large datasets, outliers are present, there are many missing values and you don’t want to do much feature engineering
 
 Pros: 
@@ -509,23 +511,41 @@ cat("F1 Score: ", f1)
 Even only using 10% of the training set, and therefore 8% of the total dataset, the model was able to perform with an error rate of less than 15% and recieve an F1 score in the .4 range. This model performed excellently. 
 
 
-## Reproducibility
+## Conclusions
 
-The data source includes all of 6 csvs of the necessary data sources and code files. The code outlines all the feature creation is provided in each step to reduce error. 
+### Reproducibility 
+* Models
+  + Clearly described both models, their input parameters, and their complexity
+* Datasets
+  + Included all 6 csv files in our analysis
+  + Thoroughly explained feature engineering, with rationale, to enable recreation
+  + Like to the datasets can be found here: [Source](https://www.kaggle.com/c/instacart-market-basket-analysis)
+* Experimental Results
+  + Specified Hyperparameters used in obtaining best result
+  + Clear description of results and evaluation metrics used
+  + Included graphs of relevant statistics
+  + Energy cost of running both models
 
-Each Data Extraction includes notes for the rationale of our choices.
+### Overall Conclusions
 
-All R Packages are identified at the beginning of the model.
+**Runtime**
+```{r}
+end_time <- Sys.time()
+total_time = end_time - start_time
+cat('Total time to compile markdown:', total_time, "seconds.")
+```
 
-All unique hyper-parameters are identified at the beginning of the model.
-
-Each model includes rationale in why the algorithm was chosen.
-
-Graphs are included with multiple relevant statistics.
 
 It is important to note, due to the high amount of data manipulation during the feature extraction portion of the script, the datasets created are extremely large. There are over 6.5 million variables in our train data and 1.7 million variables in our test dataset after all the extraction, so computing power is something to keep in mind when running this model for reproducibility.
 
+**Model Results**
+
 ## References
 
+* [Source](https://www.kaggle.com/c/instacart-market-basket-analysis)
+* (https://www.kaggle.com/evangeloskalampokis/predictive-business-analytics-with-instacart)
+* (https://www.kaggle.com/soutou/instacart-xgboost-starter-lb-0-3808482)
+* (https://www.kaggle.com/stansilas/simple-mba-using-r)
+* (https://www.kaggle.com/c/instacart-market-basket-analysis/code?competitionId=6644&sortBy=scoreDescending)
 
   
