@@ -1,0 +1,475 @@
+---
+title: "Team 10 Team Project 2"
+author: "Akram Bijapuri, Alejandro Valencia Patin, Matt Sadosuk, Justin Pender"
+date: "4/19/2021"
+output:
+    html_document:
+    toc: true
+    toc_float: true
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# InstaCart Market Basket Analysis {.tabset}
+[Kaggle Source](https://www.kaggle.com/c/instacart-market-basket-analysis)
+
+## The Problem
+
+ADD TEXT
+
+## Existing Model Critiques
+
+ADD TEXT
+
+
+## Solution
+
+### Loading the Data
+```{r, results='hide', message=FALSE, warning=FALSE}
+installIfAbsentAndLoad <- function(neededVector) {
+  for(thispackage in neededVector) {
+    if( ! require(thispackage, character.only = T) )
+    { install.packages(thispackage)}
+    require(thispackage, character.only = T)
+  }
+}
+
+needed <- c( 'e1071', 'ROCR', 'tidyverse', 'dplyr', 'tidyr', 'data.table', 'caret', 'xgboost','Ckmeans.1d.dp','randomForest')  
+installIfAbsentAndLoad(needed)
+```
+
+A total of 6 csvs were required for the analysis:
+* orderp: all prior orders for all users
+* ordert: the most recent order for each user
+* products: details about all products (product name, aisle, department)
+* departments: department ids and names
+* aisles: aisle ids and aisle names
+
+```{r}
+orderp  <- read.csv('order_products__prior.csv')
+ordert <- read.csv('order_products__train.csv')
+products <- read.csv('products.csv')
+orders <- read.csv('orders.csv')
+departments <- read.csv('departments.csv')
+aisles <- read.csv('aisles.csv')
+```
+
+### Reshape data 
+
+We changed everythign that was factors into factors.
+
+We then joined important product information in aisles and department csvs to product csv so it is all in one csv.
+
+We also combined all the order csvs into one order dataframe.
+```{r}
+aisles$aisle <- as.factor(aisles$aisle)
+departments$department <- as.factor(departments$department)
+orders$eval_set <- as.factor(orders$eval_set)
+products$product_name <- as.factor(products$product_name)
+
+products <- products %>% 
+  inner_join(aisles) %>% inner_join(departments) %>% 
+  select(-aisle_id, -department_id)
+rm(aisles, departments)
+
+ordert$user_id <- orders$user_id[match(ordert$order_id, orders$order_id)]
+
+orders_products <- orders %>% inner_join(orderp, by = "order_id")
+
+rm(orderp)
+```
+
+
+### Getting product-level information
+
+
+A group_by is used to get just one row for each pair of user_ID and Product. The mutate function is used afterwards to create a new column that keeps a count of the number of times an element has been ordered by a costumer.
+
+Next, the data frame is grouped by product_id and a summarise function is implemented to create four new columns that include:
+The number of instances in which a product was ordered
+The number of times that a product was reordered
+A sum of the times a product was ordered at the amount of times
+
+```{r}
+prd <- orders_products %>%
+  arrange(user_id, order_number, product_id) %>%
+  group_by(user_id, product_id) %>%
+  mutate(product_time = row_number()) %>%
+  ungroup() %>%
+  group_by(product_id) %>%
+  summarise(
+    prod_orders = n(),
+    prod_reorders = sum(reordered),
+    prod_first_orders = sum(product_time == 1),
+    prod_second_orders = sum(product_time == 2)
+  )
+```
+
+
+Using the above information, we can then calculate probabilities ratios for our feature extraction. This is important as it allows us to use product level detail in feature analysis.
+
+The final transformation of the data frame uses the recently created columns and calculates:
+The probability that a product is reordered at least once
+The average number of times a product was reordered 
+And a ratio of the number of reorders and the number of total orders  
+
+```{r}
+prd$prod_reorder_probability <- prd$prod_second_orders / prd$prod_first_orders
+prd$prod_reorder_times <- 1 + prd$prod_reorders / prd$prod_first_orders
+prd$prod_reorder_ratio <- prd$prod_reorders / prd$prod_orders
+
+prd <- prd %>% select(-prod_reorders, -prod_first_orders, -prod_second_orders)
+
+rm(products)
+```
+
+### Getting user level information
+
+Every user's last order is identified as either train or test. Their orders before that are identified as "prior". We need to use the prior data to predict on the train or testing data.
+
+For each user_id we find the highest # of orders which is the amount of orders they placed.
+
+For each user we take the total and the of all days, which will give how long the user has been ordering instacart as well as how often.
+```{r}
+users <- orders %>%
+  filter(eval_set == "prior") %>%
+  group_by(user_id) %>%
+  summarise(
+    user_orders = max(order_number),
+    user_period = sum(days_since_prior_order, na.rm = T),
+    user_mean_days_since_prior = mean(days_since_prior_order, na.rm = T)
+  )
+```
+
+Next we will add combine products to user for all the 'prior' data.
+
+Per user, for everyone who has multiple orders, and take the ratio if they reordered something over the total of orders (we filter for >1 bc users who ordered 1 time do not reorder)
+
+This is important to see how often a user that has multiple orders actually reorders something 
+
+Finally, tfind the average amount of products of their average instacart buy. This is another useful feature as it allows us to predict on prouduct number
+```{r}
+us <- orders_products %>%
+  group_by(user_id) %>%
+  summarise(
+    user_total_products = n(),
+    user_reorder_ratio = sum(reordered == 1) / sum(order_number > 1),
+    user_distinct_products = n_distinct(product_id)
+  )
+
+users <- users %>% inner_join(us)
+users$user_average_basket <- users$user_total_products / users$user_orders
+
+```
+
+Since we only brought prior data, now we will bring over our actual full data that we are predicting on. 
+```{r}
+us <- orders %>%
+  filter(eval_set != "prior") %>%
+  select(user_id, order_id, eval_set,
+         time_since_last_order = days_since_prior_order)
+
+users <- users %>% inner_join(us)
+
+rm(us)
+```
+
+### Combining all tables
+
+Creates the data table by grouping order-products by user_id and product_id.
+For each combination of user_id and product_id, counts the number of orders,
+finds the first and last order where the user orders a specific product, and
+takes the average position in which a product is placed in an order.
+
+```{r}
+data <- orders_products %>%
+  group_by(user_id, product_id) %>% 
+  summarise(
+    up_orders = n(),
+    up_first_order = min(order_number),
+    up_last_order = max(order_number),
+    up_average_cart_position = mean(add_to_cart_order))
+
+rm(orders_products, orders)
+```
+
+Adds all columns from the prd data frame and the users data frame into the users table
+Rows from prd and rows from users will be repeated for each instance or product and user
+respectively. These rows are not unique.
+``` {r}
+data <- data %>% 
+  inner_join(prd, by = "product_id") %>%
+  inner_join(users, by = "user_id")
+```
+
+"""Adds a up_order_rate column which tells how frequently a user orders a product.
+Then adds up_orders_since_last_order, or how many orders have passed since the last time
+a product was ordered. These two columns together could be used to perform a simple linear
+regression.
+up_order_rate_since_first_order gives how frequently a product has been ordered since the first
+time it was ordered. It is slightly different than up_order_rate, but may be highly correlated
+``` {r}
+data$up_order_rate <- data$up_orders / data$user_orders
+data$up_orders_since_last_order <- data$user_orders - data$up_last_order
+data$up_order_rate_since_first_order <- data$up_orders / (data$user_orders - data$up_first_order + 1)
+```
+
+Adds in the predictor variable of whether the product was reordered in the most recent cart.
+
+```{r}
+data <- data %>% 
+  left_join(ordert %>% select(user_id, product_id, reordered), 
+            by = c("user_id", "product_id"))
+rm(ordert, prd, users)
+```
+
+Some variables in this model would be too highly correlated to both be 
+the included in analysis (ex. up_orders and up_order_rate). Both indicate the same thing,
+the likelihood of a product being ordered; however, since boosting allows for strongly-correlated variables to be included, they can be included in this model.
+
+
+### Train/Test Split
+
+Remove the test set, since it cannot be evaluated 
+
+``` {r}
+data1 <- as.data.frame(data[data$eval_set == "train",])
+rm(data)
+```
+
+Performing a train/test split was highly difficult due to the nature of the dataset, and none of the normal methods worked. We were required to randomly assign train and test labels to each user at an 80/20 ratio. We first had to select distinct user IDs and randomly assign them train and test labels at an 80/20 ratio. Then we joined these labels onto the original dataset, so that each row had a train and test label, then filtered on this label.
+
+``` {r}
+set.seed(10)
+groups <-
+  data1 %>%
+  select(user_id) %>%
+  distinct(user_id) %>%
+  rowwise() %>%
+  mutate(group = sample(
+    c("newtrain", "newtest"),
+    1,
+    replace = TRUE,
+    prob = c(0.8, 0.2) 
+  ))
+
+newdata <- data1 %>%
+  left_join(groups)
+
+train <- as.data.frame(newdata[newdata$group == "newtrain",])
+test <- as.data.frame(newdata[newdata$group == "newtest",])
+```
+
+We then removed unnecessary columns and performed further cleaning to prepare for boosting.
+
+```{r}
+train$eval_set <- NULL
+train$group <- NULL
+train$order_id <- NULL
+train$reordered[is.na(train$reordered)] <- 0
+
+test$eval_set <- NULL
+test$group <- NULL
+test$order_id <- NULL
+test$reordered[is.na(test$reordered)] <- 0
+```
+
+### The Random Forest Model
+
+To compare a standard Random Forest model, only 2% of the training set was used for the model as our computer machines were unable to handle the entirety of the data. 1% is still 135,000 data, so it still could build a model with it.
+
+```{r}
+set.seed(10)
+
+
+subtrain <- train %>% sample_frac(0.02) 
+
+RF <- randomForest(as.factor(reordered) ~ .,
+                   data=subtrain,
+                   ntree=500,
+                   mtry=4,
+                   importance=TRUE, 
+                   replace=T)
+
+```
+
+#### Variable Importance Plot
+
+``` {r}
+varImpPlot(RF,type=2)
+```
+
+
+### Evaluating the model performance on the test set
+
+#### Making Predictions
+
+```{r}
+
+test$RFpred = predict(RF, newdata=test)
+```
+
+#### Confusion Matrix
+
+```{r}
+(confmat <- table(test$RFpred, test$reordered)[2:1, 2:1])
+test$RFpred <- as.factor(test$RFpred)
+test$reordered <- as.factor(test$reordered)
+```
+
+```{r, echo=FALSE}
+table1 <- data.frame(confusionMatrix(test$RFpred, test$reordered)$table)
+plotTable <- table1 %>%
+  mutate(Performance = ifelse(table1$Prediction == table1$Reference, "Correct", "Incorrect")) %>%
+  group_by(Reference) %>%
+  mutate(prop = Freq/sum(Freq))
+
+ggplot(data = plotTable, mapping = aes(x = Reference, y = Prediction, fill = Performance, alpha = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = Freq), vjust = .5, fontface  = "bold", alpha = 1) +
+  scale_fill_manual(values = c(Correct = "green", Incorrect = "red")) +
+  theme_bw() +
+  xlim(rev(levels(table1$Reference))) + 
+  ggtitle("Confusion Matrix")
+```
+
+#### Evaluating Performance using f-score and test error rate
+
+**Error Rate**
+```{r}
+calc_error_rate <- function(confusion_matrix) {
+  return(1 - sum(diag(confusion_matrix)) / sum(confusion_matrix))
+}
+cat("Test Error Rate: ", calc_error_rate(confmat))
+```
+
+
+**F1 score**
+```{r}
+sensitivity <- confmat[1]/(confmat[1]+confmat[2])
+precision <- confmat[1]/(confmat[1]+confmat[3])
+f1 <- 2 * (precision * sensitivity)/(precision + sensitivity)
+cat("F1 Score: ", f1)
+```
+
+The model was able to perform with an error rate of 10% and recieve an F1 score in the .27 range. This model performed well, but not as well as XGboosting model.  
+
+
+### The XGBoost Model
+
+The following parameters were used for the xgboosting model. Only 10% of the training set was used for the boosting model. An xgboosting matrix was created without columns that are unusable in the model like user and product ID. Then this matrix is used in an xgboosting model, which trains for 90 rounds. 
+
+```{r}
+set.seed(10)
+params <- list(
+  "objective"           = "reg:logistic",
+  "eval_metric"         = "logloss",
+  "eta"                 = 0.1,
+  "max_depth"           = 5,
+  "min_child_weight"    = 10,
+  "gamma"               = 0.70,
+  "subsample"           = 0.77,
+  "colsample_bytree"    = 0.95,
+  "alpha"               = 10e-05,
+  "lambda"              = 10
+)
+
+subtrain <- train %>% sample_frac(0.1)
+
+X <- xgb.DMatrix(as.matrix(subtrain %>% select(-c(reordered, user_id, product_id))), label = subtrain$reordered)
+
+model <- xgboost(data = X, params = params, nrounds = 90)
+```
+
+#### Variable Importance Plot
+
+``` {r}
+importance <- xgb.importance(colnames(X), model = model)
+xgb.ggplot.importance(importance)
+```
+
+
+### Evaluating the model performance on the test set
+
+#### Making Predictions
+
+Making predictions: 0.22 was used as the threshold of whether a product was reordered. 
+```{r}
+set.seed(10)
+X <- xgb.DMatrix(as.matrix(test %>% select(-c(reordered, user_id, product_id, RFpred))))
+
+test$predictions <- predict(model, X)
+test$predictions <- (test$predictions > 0.22) * 1
+```
+
+#### Confusion Matrix
+
+```{r}
+(confmat <- table(test$predictions, test$reordered)[2:1, 2:1])
+test$predictions <- as.factor(test$predictions)
+test$reordered <- as.factor(test$reordered)
+```
+
+```{r, echo=FALSE}
+table1 <- data.frame(confusionMatrix(test$predictions, test$reordered)$table)
+plotTable <- table1 %>%
+  mutate(Performance = ifelse(table1$Prediction == table1$Reference, "Correct", "Incorrect")) %>%
+  group_by(Reference) %>%
+  mutate(prop = Freq/sum(Freq))
+
+ggplot(data = plotTable, mapping = aes(x = Reference, y = Prediction, fill = Performance, alpha = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = Freq), vjust = .5, fontface  = "bold", alpha = 1) +
+  scale_fill_manual(values = c(Correct = "green", Incorrect = "red")) +
+  theme_bw() +
+  xlim(rev(levels(table1$Reference))) + 
+  ggtitle("Confusion Matrix")
+```
+
+#### Evaluating Performance using f-score and test error rate
+
+**Error Rate**
+```{r}
+calc_error_rate <- function(confusion_matrix) {
+  return(1 - sum(diag(confusion_matrix)) / sum(confusion_matrix))
+}
+cat("Test Error Rate: ", calc_error_rate(confmat))
+```
+
+
+**F1 score**
+```{r}
+sensitivity <- confmat[1]/(confmat[1]+confmat[2])
+precision <- confmat[1]/(confmat[1]+confmat[3])
+f1 <- 2 * (precision * sensitivity)/(precision + sensitivity)
+cat("F1 Score: ", f1)
+```
+
+Even only using 10% of the training set, and therefore 8% of the total dataset, the model was able to perform with an error rate of less than 15% and recieve an F1 score in the .4 range. This model performed excellently. 
+
+
+## Reproducibility
+
+[Kaggle Source](https://www.kaggle.com/c/instacart-market-basket-analysis)
+
+The data source includes all of 6 csvs of the necessary data sources and code files. The code outlines all the feature creation is provided in each step to reduce error. 
+
+Each Data Extraction includes notes for the rationale of our choices.
+
+All R Packages are identified at the beginning of the model.
+
+All unique hyper-parameters are identified at the beginning of the model.
+
+Each model includes rationale in why the algorithm was chosen.
+
+Graphs are included with multiple relevant statistics.
+
+It is important to note, due to the high amount of data manipulation during the feature extraction portion of the script, the datasets created are extremely large. There are over 6.5 million variables in our train data and 1.7 million variables in our test dataset after all the extraction, so computing power is something to keep in mind when running this model for reproducibility.
+
+## References
+
+
+  
