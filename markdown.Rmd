@@ -389,11 +389,11 @@ params <- list(
   "lambda"              = 10           # L2 regularization term on weights
 )
 
-
+# We get a sample containing 10% of the train table
 subtrain <- train %>% sample_frac(0.1)
-
+# We create an xgb.DMatrix that is named X with predictors from subtrain table and response the reordered variable
 X <- xgb.DMatrix(as.matrix(subtrain %>% select(-c(reordered, user_id, product_id))), label = subtrain$reordered)
-
+# We create the actual model
 model <- xgboost(data = X, params = params, nrounds = 90)
 ```
 
@@ -412,6 +412,7 @@ xgb.ggplot.importance(importance)
 set.seed(10)
 X <- xgb.DMatrix(as.matrix(test %>% select(-c(reordered, user_id, product_id, RFpred))))
 
+# The model estimates a probability. We apply a threshold so every prediction above 0.22 will be considered as a reorder (reordered=1)
 test$predictions <- predict(model, X)
 test$predictions <- (test$predictions > 0.22) * 1
 ```
